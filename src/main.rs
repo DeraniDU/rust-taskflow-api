@@ -2,6 +2,11 @@ use axum::{Json, Router, routing::get};
 use serde_json::{Value, json};
 use std::net::SocketAddr;
 
+mod models;
+mod routes;
+
+use routes::tasks::task_routes;
+
 async fn health_check() -> Json<Value> {
     Json(json!({
         "status": "ok",
@@ -13,7 +18,9 @@ async fn health_check() -> Json<Value> {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let app = Router::new().route("/health", get(health_check));
+    let app = Router::new()
+        .route("/health", get(health_check))
+        .merge(task_routes());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
