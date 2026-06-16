@@ -1,5 +1,5 @@
-use axum::{routing::get, Router, Json};
-use serde_json::{json, Value};
+use axum::{Json, Router, routing::get};
+use serde_json::{Value, json};
 use std::net::SocketAddr;
 
 async fn health_check() -> Json<Value> {
@@ -13,8 +13,7 @@ async fn health_check() -> Json<Value> {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let app = Router::new()
-        .route("/health", get(health_check));
+    let app = Router::new().route("/health", get(health_check));
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
@@ -24,7 +23,5 @@ async fn main() {
         .await
         .expect("Failed to bind address");
 
-    axum::serve(listener, app)
-        .await
-        .expect("Server failed");
+    axum::serve(listener, app).await.expect("Server failed");
 }
