@@ -4,8 +4,10 @@ use std::net::SocketAddr;
 
 mod models;
 mod routes;
+mod state;
 
 use routes::tasks::task_routes;
+use state::AppState;
 
 async fn health_check() -> Json<Value> {
     Json(json!({
@@ -18,9 +20,12 @@ async fn health_check() -> Json<Value> {
 async fn main() {
     tracing_subscriber::fmt::init();
 
+    let app_state = AppState::new();
+
     let app = Router::new()
         .route("/health", get(health_check))
-        .merge(task_routes());
+        .merge(task_routes())
+        .with_state(app_state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
