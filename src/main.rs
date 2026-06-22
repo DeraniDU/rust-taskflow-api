@@ -2,10 +2,12 @@ use axum::{Json, Router, routing::get};
 use serde_json::{Value, json};
 use std::net::SocketAddr;
 
+mod database;
 mod models;
 mod routes;
 mod state;
 
+use database::sqlite::connect_database;
 use routes::tasks::task_routes;
 use state::AppState;
 
@@ -20,7 +22,12 @@ async fn health_check() -> Json<Value> {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let app_state = AppState::new();
+    let database_url = "sqlite://taskflow.db";
+    let db = connect_database(database_url)
+        .await
+        .expect("Failed to connect database");
+
+    let app_state = AppState::new(db);
 
     let app = Router::new()
         .route("/health", get(health_check))
