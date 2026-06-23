@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum TaskStatus {
     Pending,
@@ -34,5 +34,20 @@ impl Task {
             description: description.into(),
             status,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn creates_new_task() {
+        let task = Task::new(1, "Test task", "Testing task creation", TaskStatus::Pending);
+
+        assert_eq!(task.id, 1);
+        assert_eq!(task.title, "Test task");
+        assert_eq!(task.description, "Testing task creation");
+        assert_eq!(task.status, TaskStatus::Pending);
     }
 }

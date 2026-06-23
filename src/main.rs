@@ -1,38 +1,21 @@
-use axum::{Json, Router, routing::get};
-use serde_json::{Value, json};
 use std::net::SocketAddr;
 
-mod database;
-mod models;
-mod routes;
-mod state;
-
-use database::sqlite::connect_database;
-use routes::tasks::task_routes;
-use state::AppState;
-
-async fn health_check() -> Json<Value> {
-    Json(json!({
-        "status": "ok",
-        "message": "Rust TaskFlow API is running"
-    }))
-}
+use rust_taskflow_api::{app::create_app, database::sqlite::connect_database, state::AppState};
 
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
     tracing_subscriber::fmt::init();
 
-    let database_url = "sqlite://taskflow.db";
-    let db = connect_database(database_url)
+    let database_url =
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://taskflow.db".to_string());
+
+    let db = connect_database(&database_url)
         .await
         .expect("Failed to connect database");
 
     let app_state = AppState::new(db);
-
-    let app = Router::new()
-        .route("/health", get(health_check))
-        .merge(task_routes())
-        .with_state(app_state);
+    let app = create_app(app_state);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
 
