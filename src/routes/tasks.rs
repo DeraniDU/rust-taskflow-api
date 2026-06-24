@@ -8,7 +8,9 @@ use sqlx::{Row, sqlite::SqliteRow};
 
 use crate::{
     errors::ApiError,
-    models::task::{CreateTaskRequest, Task, TaskStatus, UpdateTaskRequest},
+    models::task::{
+        CreateTaskRequest, Task, TaskPriority, TaskStatus, TaskTimestamps, UpdateTaskRequest,
+    },
     state::AppState,
 };
 
@@ -22,9 +24,15 @@ pub fn task_routes() -> Router<AppState> {
 }
 
 async fn get_tasks(State(state): State<AppState>) -> Result<Json<Vec<Task>>, ApiError> {
-    let rows = sqlx::query("SELECT id, title, description, status FROM tasks ORDER BY id ASC")
-        .fetch_all(&state.db)
-        .await?;
+    let rows = sqlx::query(
+        r#"
+        SELECT id, title, description, status, priority, due_date, created_at, updated_at
+        FROM tasks
+        ORDER BY id ASC
+        "#,
+    )
+    .fetch_all(&state.db)
+    .await?;
 
     let tasks = rows.into_iter().map(row_to_task).collect();
 
@@ -35,10 +43,16 @@ async fn get_task(
     Path(id): Path<u32>,
     State(state): State<AppState>,
 ) -> Result<Json<Task>, ApiError> {
-    let row = sqlx::query("SELECT id, title, description, status FROM tasks WHERE id = ?")
-        .bind(id as i64)
-        .fetch_optional(&state.db)
-        .await?;
+    let row = sqlx::query(
+        r#"
+        SELECT id, title, description, status, priority, due_date, created_at, updated_at
+        FROM tasks
+        WHERE id = ?
+        "#,
+    )
+    .bind(id as i64)
+    .fetch_optional(&state.db)
+    .await?;
 
     match row {
         Some(row) => Ok(Json(row_to_task(row))),
@@ -52,26 +66,43 @@ async fn create_task(
 ) -> Result<(StatusCode, Json<Task>), ApiError> {
     let title = payload.title.trim().to_string();
     let description = payload.description.trim().to_string();
+    let priority = payload.priority.unwrap_or(TaskPriority::Medium);
+    let due_date = payload.due_date;
 
     if title.is_empty() {
         return Err(ApiError::BadRequest("Task title is required".to_string()));
     }
 
-    let result = sqlx::query("INSERT INTO tasks (title, description, status) VALUES (?, ?, ?)")
-        .bind(&title)
-        .bind(&description)
-        .bind("pending")
-        .execute(&state.db)
-        .await?;
+    let result = sqlx::query(
+        r#"
+        INSERT INTO tasks
+            (title, description, status, priority, due_date, created_at, updated_at)
+        VALUES
+            (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        "#,
+    )
+    .bind(&title)
+    .bind(&description)
+    .bind("pending")
+    .bind(task_priority_to_database(&priority))
+    .bind(&due_date)
+    .execute(&state.db)
+    .await?;
 
-    let new_task = Task::new(
-        result.last_insert_rowid() as u32,
-        title,
-        description,
-        TaskStatus::Pending,
-    );
+    let new_id = result.last_insert_rowid() as u32;
 
-    Ok((StatusCode::CREATED, Json(new_task)))
+    let row = sqlx::query(
+        r#"
+        SELECT id, title, description, status, priority, due_date, created_at, updated_at
+        FROM tasks
+        WHERE id = ?
+        "#,
+    )
+    .bind(new_id as i64)
+    .fetch_one(&state.db)
+    .await?;
+
+    Ok((StatusCode::CREATED, Json(row_to_task(row))))
 }
 
 async fn update_task(
@@ -86,24 +117,44 @@ async fn update_task(
         return Err(ApiError::BadRequest("Task title is required".to_string()));
     }
 
-    let status_text = task_status_to_database(&payload.status);
-
-    let result =
-        sqlx::query("UPDATE tasks SET title = ?, description = ?, status = ? WHERE id = ?")
-            .bind(&title)
-            .bind(&description)
-            .bind(status_text)
-            .bind(id as i64)
-            .execute(&state.db)
-            .await?;
+    let result = sqlx::query(
+        r#"
+        UPDATE tasks
+        SET
+            title = ?,
+            description = ?,
+            status = ?,
+            priority = ?,
+            due_date = ?,
+            updated_at = datetime('now')
+        WHERE id = ?
+        "#,
+    )
+    .bind(&title)
+    .bind(&description)
+    .bind(task_status_to_database(&payload.status))
+    .bind(task_priority_to_database(&payload.priority))
+    .bind(&payload.due_date)
+    .bind(id as i64)
+    .execute(&state.db)
+    .await?;
 
     if result.rows_affected() == 0 {
         return Err(ApiError::NotFound("Task not found".to_string()));
     }
 
-    let updated_task = Task::new(id, title, description, payload.status);
+    let row = sqlx::query(
+        r#"
+        SELECT id, title, description, status, priority, due_date, created_at, updated_at
+        FROM tasks
+        WHERE id = ?
+        "#,
+    )
+    .bind(id as i64)
+    .fetch_one(&state.db)
+    .await?;
 
-    Ok(Json(updated_task))
+    Ok(Json(row_to_task(row)))
 }
 
 async fn delete_task(
@@ -127,12 +178,22 @@ fn row_to_task(row: SqliteRow) -> Task {
     let title: String = row.get("title");
     let description: String = row.get("description");
     let status: String = row.get("status");
+    let priority: String = row.get("priority");
+    let due_date: Option<String> = row.get("due_date");
+    let created_at: Option<String> = row.get("created_at");
+    let updated_at: Option<String> = row.get("updated_at");
 
     Task::new(
         id as u32,
         title,
         description,
         task_status_from_database(&status),
+        task_priority_from_database(&priority),
+        due_date,
+        TaskTimestamps {
+            created_at: created_at.unwrap_or_default(),
+            updated_at: updated_at.unwrap_or_default(),
+        },
     )
 }
 
@@ -147,5 +208,21 @@ fn task_status_to_database(status: &TaskStatus) -> &'static str {
     match status {
         TaskStatus::Pending => "pending",
         TaskStatus::Completed => "completed",
+    }
+}
+
+pub fn task_priority_from_database(priority: &str) -> TaskPriority {
+    match priority {
+        "low" => TaskPriority::Low,
+        "high" => TaskPriority::High,
+        _ => TaskPriority::Medium,
+    }
+}
+
+fn task_priority_to_database(priority: &TaskPriority) -> &'static str {
+    match priority {
+        TaskPriority::Low => "low",
+        TaskPriority::Medium => "medium",
+        TaskPriority::High => "high",
     }
 }

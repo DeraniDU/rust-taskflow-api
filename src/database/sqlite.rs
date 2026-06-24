@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use sqlx::{
-    SqlitePool,
+    Row, SqlitePool,
     sqlite::{SqliteConnectOptions, SqlitePoolOptions},
 };
 
@@ -14,6 +14,7 @@ pub async fn connect_database(database_url: &str) -> Result<SqlitePool, sqlx::Er
         .await?;
 
     create_tasks_table(&pool).await?;
+    migrate_tasks_table(&pool).await?;
     seed_tasks_if_empty(&pool).await?;
 
     Ok(pool)
@@ -26,7 +27,11 @@ async fn create_tasks_table(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT NOT NULL,
             description TEXT NOT NULL,
-            status TEXT NOT NULL
+            status TEXT NOT NULL,
+            priority TEXT NOT NULL DEFAULT 'medium',
+            due_date TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         "#,
     )
@@ -34,6 +39,59 @@ async fn create_tasks_table(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     .await?;
 
     Ok(())
+}
+
+async fn migrate_tasks_table(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    if !column_exists(pool, "priority").await? {
+        sqlx::query("ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'medium'")
+            .execute(pool)
+            .await?;
+    }
+
+    if !column_exists(pool, "due_date").await? {
+        sqlx::query("ALTER TABLE tasks ADD COLUMN due_date TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    if !column_exists(pool, "created_at").await? {
+        sqlx::query("ALTER TABLE tasks ADD COLUMN created_at TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    if !column_exists(pool, "updated_at").await? {
+        sqlx::query("ALTER TABLE tasks ADD COLUMN updated_at TEXT")
+            .execute(pool)
+            .await?;
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE tasks
+        SET
+            created_at = COALESCE(created_at, datetime('now')),
+            updated_at = COALESCE(updated_at, datetime('now')),
+            priority = COALESCE(priority, 'medium')
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(())
+}
+
+async fn column_exists(pool: &SqlitePool, column_name: &str) -> Result<bool, sqlx::Error> {
+    let rows = sqlx::query("PRAGMA table_info(tasks)")
+        .fetch_all(pool)
+        .await?;
+
+    let exists = rows.into_iter().any(|row| {
+        let name: String = row.get("name");
+        name == column_name
+    });
+
+    Ok(exists)
 }
 
 async fn seed_tasks_if_empty(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -50,26 +108,41 @@ async fn seed_tasks_if_empty(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             "Learn Rust database",
             "Connect Rust API with SQLite database",
             "pending",
+            "medium",
+            None::<String>,
         ),
         (
             "Save tasks permanently",
             "Store created tasks in database instead of memory",
             "pending",
+            "high",
+            None::<String>,
         ),
         (
             "Practice database pipeline",
             "Make sure database changes pass GitHub Actions",
             "completed",
+            "low",
+            None::<String>,
         ),
     ];
 
-    for (title, description, status) in seed_tasks {
-        sqlx::query("INSERT INTO tasks (title, description, status) VALUES (?, ?, ?)")
-            .bind(title)
-            .bind(description)
-            .bind(status)
-            .execute(pool)
-            .await?;
+    for (title, description, status, priority, due_date) in seed_tasks {
+        sqlx::query(
+            r#"
+            INSERT INTO tasks
+                (title, description, status, priority, due_date, created_at, updated_at)
+            VALUES
+                (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+            "#,
+        )
+        .bind(title)
+        .bind(description)
+        .bind(status)
+        .bind(priority)
+        .bind(due_date)
+        .execute(pool)
+        .await?;
     }
 
     Ok(())
