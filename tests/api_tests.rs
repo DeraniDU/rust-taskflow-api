@@ -30,6 +30,37 @@ async fn test_app() -> axum::Router {
     create_app(app_state)
 }
 
+async fn response_body_to_json(response: axum::response::Response) -> Value {
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("Failed to read response body");
+
+    serde_json::from_slice(&bytes).expect("Failed to parse response body")
+}
+
+async fn create_test_task(app: axum::Router) -> Value {
+    let request_body = json!({
+        "title": "Test task",
+        "description": "Created during integration test"
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/tasks")
+                .header("content-type", "application/json")
+                .body(Body::from(request_body.to_string()))
+                .expect("Failed to build request"),
+        )
+        .await
+        .expect("Failed to call app");
+
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    response_body_to_json(response).await
+}
+
 #[tokio::test]
 async fn get_tasks_returns_success() {
     let app = test_app().await;
@@ -46,6 +77,52 @@ async fn get_tasks_returns_success() {
         .expect("Failed to call app");
 
     assert_eq!(response.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn get_task_by_id_returns_success() {
+    let app = test_app().await;
+
+    let created_task = create_test_task(app.clone()).await;
+    let task_id = created_task["id"]
+        .as_u64()
+        .expect("Task id should be a number");
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/tasks/{task_id}"))
+                .body(Body::empty())
+                .expect("Failed to build request"),
+        )
+        .await
+        .expect("Failed to call app");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response_body_to_json(response).await;
+
+    assert_eq!(body["id"], task_id);
+    assert_eq!(body["title"], "Test task");
+}
+
+#[tokio::test]
+async fn get_task_by_id_returns_not_found_for_invalid_id() {
+    let app = test_app().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/tasks/999999")
+                .body(Body::empty())
+                .expect("Failed to build request"),
+        )
+        .await
+        .expect("Failed to call app");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -71,11 +148,7 @@ async fn post_tasks_creates_task() {
 
     assert_eq!(response.status(), StatusCode::CREATED);
 
-    let bytes = to_bytes(response.into_body(), usize::MAX)
-        .await
-        .expect("Failed to read response body");
-
-    let body: Value = serde_json::from_slice(&bytes).expect("Failed to parse response body");
+    let body = response_body_to_json(response).await;
 
     assert_eq!(body["title"], "Integration test task");
     assert_eq!(body["description"], "Created from API integration test");
@@ -104,4 +177,120 @@ async fn post_tasks_rejects_empty_title() {
         .expect("Failed to call app");
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn put_tasks_updates_task() {
+    let app = test_app().await;
+
+    let created_task = create_test_task(app.clone()).await;
+    let task_id = created_task["id"]
+        .as_u64()
+        .expect("Task id should be a number");
+
+    let update_body = json!({
+        "title": "Updated task title",
+        "description": "Updated task description",
+        "status": "completed"
+    });
+
+    let update_response = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/tasks/{task_id}"))
+                .header("content-type", "application/json")
+                .body(Body::from(update_body.to_string()))
+                .expect("Failed to build update request"),
+        )
+        .await
+        .expect("Failed to call update task");
+
+    assert_eq!(update_response.status(), StatusCode::OK);
+
+    let updated_task = response_body_to_json(update_response).await;
+
+    assert_eq!(updated_task["title"], "Updated task title");
+    assert_eq!(updated_task["description"], "Updated task description");
+    assert_eq!(updated_task["status"], "completed");
+}
+
+#[tokio::test]
+async fn put_tasks_returns_not_found_for_invalid_id() {
+    let app = test_app().await;
+
+    let update_body = json!({
+        "title": "Invalid update",
+        "description": "This task does not exist",
+        "status": "completed"
+    });
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/tasks/999999")
+                .header("content-type", "application/json")
+                .body(Body::from(update_body.to_string()))
+                .expect("Failed to build request"),
+        )
+        .await
+        .expect("Failed to call app");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn delete_tasks_deletes_task() {
+    let app = test_app().await;
+
+    let created_task = create_test_task(app.clone()).await;
+    let task_id = created_task["id"]
+        .as_u64()
+        .expect("Task id should be a number");
+
+    let delete_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!("/tasks/{task_id}"))
+                .body(Body::empty())
+                .expect("Failed to build delete request"),
+        )
+        .await
+        .expect("Failed to call delete task");
+
+    assert_eq!(delete_response.status(), StatusCode::NO_CONTENT);
+
+    let get_response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(format!("/tasks/{task_id}"))
+                .body(Body::empty())
+                .expect("Failed to build get request"),
+        )
+        .await
+        .expect("Failed to call get task");
+
+    assert_eq!(get_response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn delete_tasks_returns_not_found_for_invalid_id() {
+    let app = test_app().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/tasks/999999")
+                .body(Body::empty())
+                .expect("Failed to build request"),
+        )
+        .await
+        .expect("Failed to call app");
+
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
