@@ -21,6 +21,13 @@ pub struct CreateTaskRequest {
     pub description: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateTaskRequest {
+    pub title: String,
+    pub description: String,
+    pub status: TaskStatus,
+}
+
 impl Task {
     pub fn new(
         id: u32,
