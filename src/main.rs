@@ -1,4 +1,4 @@
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 
 use rust_taskflow_api::{app::create_app, database::sqlite::connect_database, state::AppState};
 
@@ -17,7 +17,14 @@ async fn main() {
     let app_state = AppState::new(db);
     let app = create_app(app_state);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let port: u16 = std::env::var("PORT")
+        .ok()
+        .and_then(|port| port.parse().ok())
+        .unwrap_or(3000);
+
+    let ip: IpAddr = host.parse().expect("Invalid HOST value");
+    let addr = SocketAddr::new(ip, port);
 
     println!("Server running at http://{}", addr);
 
