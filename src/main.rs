@@ -10,11 +10,13 @@ async fn main() {
     let database_url =
         std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://taskflow.db".to_string());
 
+    let api_key = std::env::var("API_KEY").unwrap_or_else(|_| "dev-secret-key".to_string());
+
     let db = connect_database(&database_url)
         .await
         .expect("Failed to connect database");
 
-    let app_state = AppState::new(db);
+    let app_state = AppState::new(db, api_key);
     let app = create_app(app_state);
 
     let host = std::env::var("HOST").unwrap_or_else(|_| "0.0.0.0".to_string());

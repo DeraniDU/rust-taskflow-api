@@ -1,12 +1,13 @@
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     routing::get,
 };
 use sqlx::{Row, sqlite::SqliteRow};
 
 use crate::{
+    auth::validate_api_key,
     errors::ApiError,
     models::task::{
         CreateTaskRequest, Task, TaskPriority, TaskStatus, TaskTimestamps, UpdateTaskRequest,
@@ -23,7 +24,12 @@ pub fn task_routes() -> Router<AppState> {
         )
 }
 
-async fn get_tasks(State(state): State<AppState>) -> Result<Json<Vec<Task>>, ApiError> {
+async fn get_tasks(
+    headers: HeaderMap,
+    State(state): State<AppState>,
+) -> Result<Json<Vec<Task>>, ApiError> {
+    validate_api_key(&headers, &state.api_key)?;
+
     let rows = sqlx::query(
         r#"
         SELECT id, title, description, status, priority, due_date, created_at, updated_at
@@ -41,8 +47,11 @@ async fn get_tasks(State(state): State<AppState>) -> Result<Json<Vec<Task>>, Api
 
 async fn get_task(
     Path(id): Path<u32>,
+    headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<Json<Task>, ApiError> {
+    validate_api_key(&headers, &state.api_key)?;
+
     let row = sqlx::query(
         r#"
         SELECT id, title, description, status, priority, due_date, created_at, updated_at
@@ -61,9 +70,12 @@ async fn get_task(
 }
 
 async fn create_task(
+    headers: HeaderMap,
     State(state): State<AppState>,
     Json(payload): Json<CreateTaskRequest>,
 ) -> Result<(StatusCode, Json<Task>), ApiError> {
+    validate_api_key(&headers, &state.api_key)?;
+
     let title = payload.title.trim().to_string();
     let description = payload.description.trim().to_string();
     let priority = payload.priority.unwrap_or(TaskPriority::Medium);
@@ -107,9 +119,12 @@ async fn create_task(
 
 async fn update_task(
     Path(id): Path<u32>,
+    headers: HeaderMap,
     State(state): State<AppState>,
     Json(payload): Json<UpdateTaskRequest>,
 ) -> Result<Json<Task>, ApiError> {
+    validate_api_key(&headers, &state.api_key)?;
+
     let title = payload.title.trim().to_string();
     let description = payload.description.trim().to_string();
 
@@ -159,8 +174,11 @@ async fn update_task(
 
 async fn delete_task(
     Path(id): Path<u32>,
+    headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Result<StatusCode, ApiError> {
+    validate_api_key(&headers, &state.api_key)?;
+
     let result = sqlx::query("DELETE FROM tasks WHERE id = ?")
         .bind(id as i64)
         .execute(&state.db)

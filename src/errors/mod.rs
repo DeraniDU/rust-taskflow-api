@@ -8,6 +8,7 @@ use serde_json::json;
 #[derive(Debug)]
 pub enum ApiError {
     BadRequest(String),
+    Unauthorized(String),
     NotFound(String),
     InternalServerError,
 }
@@ -16,6 +17,7 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let (status, message) = match self {
             ApiError::BadRequest(message) => (StatusCode::BAD_REQUEST, message),
+            ApiError::Unauthorized(message) => (StatusCode::UNAUTHORIZED, message),
             ApiError::NotFound(message) => (StatusCode::NOT_FOUND, message),
             ApiError::InternalServerError => (
                 StatusCode::INTERNAL_SERVER_ERROR,
