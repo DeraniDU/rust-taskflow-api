@@ -44,6 +44,13 @@ pub struct UpdateTaskRequest {
     pub due_date: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct TaskQueryParams {
+    pub status: Option<TaskStatus>,
+    pub priority: Option<TaskPriority>,
+    pub due_date: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct TaskTimestamps {
     pub created_at: String,
