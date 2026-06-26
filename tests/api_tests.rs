@@ -393,3 +393,124 @@ async fn delete_tasks_returns_not_found_for_invalid_id() {
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn get_tasks_filters_by_status() {
+    let app = test_app().await;
+
+    create_test_task(app.clone()).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/tasks?status=pending")
+                .header("x-api-key", TEST_API_KEY)
+                .body(Body::empty())
+                .expect("Failed to build request"),
+        )
+        .await
+        .expect("Failed to call app");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response_body_to_json(response).await;
+    let tasks = body.as_array().expect("Response should be an array");
+
+    assert!(!tasks.is_empty());
+
+    for task in tasks {
+        assert_eq!(task["status"], "pending");
+    }
+}
+
+#[tokio::test]
+async fn get_tasks_filters_by_priority() {
+    let app = test_app().await;
+
+    create_test_task(app.clone()).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/tasks?priority=high")
+                .header("x-api-key", TEST_API_KEY)
+                .body(Body::empty())
+                .expect("Failed to build request"),
+        )
+        .await
+        .expect("Failed to call app");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response_body_to_json(response).await;
+    let tasks = body.as_array().expect("Response should be an array");
+
+    assert!(!tasks.is_empty());
+
+    for task in tasks {
+        assert_eq!(task["priority"], "high");
+    }
+}
+
+#[tokio::test]
+async fn get_tasks_filters_by_due_date() {
+    let app = test_app().await;
+
+    create_test_task(app.clone()).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/tasks?due_date=2026-07-01")
+                .header("x-api-key", TEST_API_KEY)
+                .body(Body::empty())
+                .expect("Failed to build request"),
+        )
+        .await
+        .expect("Failed to call app");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response_body_to_json(response).await;
+    let tasks = body.as_array().expect("Response should be an array");
+
+    assert!(!tasks.is_empty());
+
+    for task in tasks {
+        assert_eq!(task["due_date"], "2026-07-01");
+    }
+}
+
+#[tokio::test]
+async fn get_tasks_filters_by_status_and_priority() {
+    let app = test_app().await;
+
+    create_test_task(app.clone()).await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/tasks?status=pending&priority=high")
+                .header("x-api-key", TEST_API_KEY)
+                .body(Body::empty())
+                .expect("Failed to build request"),
+        )
+        .await
+        .expect("Failed to call app");
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response_body_to_json(response).await;
+    let tasks = body.as_array().expect("Response should be an array");
+
+    assert!(!tasks.is_empty());
+
+    for task in tasks {
+        assert_eq!(task["status"], "pending");
+        assert_eq!(task["priority"], "high");
+    }
+}

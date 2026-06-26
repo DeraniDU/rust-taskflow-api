@@ -1,16 +1,17 @@
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     routing::get,
 };
-use sqlx::{Row, sqlite::SqliteRow};
+use sqlx::{QueryBuilder, Row, Sqlite, sqlite::SqliteRow};
 
 use crate::{
     auth::validate_api_key,
     errors::ApiError,
     models::task::{
-        CreateTaskRequest, Task, TaskPriority, TaskStatus, TaskTimestamps, UpdateTaskRequest,
+        CreateTaskRequest, Task, TaskPriority, TaskQueryParams, TaskStatus, TaskTimestamps,
+        UpdateTaskRequest,
     },
     state::AppState,
 };
@@ -26,19 +27,42 @@ pub fn task_routes() -> Router<AppState> {
 
 async fn get_tasks(
     headers: HeaderMap,
+    Query(params): Query<TaskQueryParams>,
     State(state): State<AppState>,
 ) -> Result<Json<Vec<Task>>, ApiError> {
     validate_api_key(&headers, &state.api_key)?;
 
-    let rows = sqlx::query(
+    let mut query_builder = QueryBuilder::<Sqlite>::new(
         r#"
         SELECT id, title, description, status, priority, due_date, created_at, updated_at
         FROM tasks
-        ORDER BY id ASC
         "#,
-    )
-    .fetch_all(&state.db)
-    .await?;
+    );
+
+    let mut has_where = false;
+
+    if let Some(status) = params.status.as_ref() {
+        push_where_or_and(&mut query_builder, &mut has_where);
+        query_builder
+            .push("status = ")
+            .push_bind(task_status_to_database(status));
+    }
+
+    if let Some(priority) = params.priority.as_ref() {
+        push_where_or_and(&mut query_builder, &mut has_where);
+        query_builder
+            .push("priority = ")
+            .push_bind(task_priority_to_database(priority));
+    }
+
+    if let Some(due_date) = params.due_date.as_ref() {
+        push_where_or_and(&mut query_builder, &mut has_where);
+        query_builder.push("due_date = ").push_bind(due_date);
+    }
+
+    query_builder.push(" ORDER BY id ASC");
+
+    let rows = query_builder.build().fetch_all(&state.db).await?;
 
     let tasks = rows.into_iter().map(row_to_task).collect();
 
@@ -189,6 +213,15 @@ async fn delete_task(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn push_where_or_and(query_builder: &mut QueryBuilder<Sqlite>, has_where: &mut bool) {
+    if *has_where {
+        query_builder.push(" AND ");
+    } else {
+        query_builder.push(" WHERE ");
+        *has_where = true;
+    }
 }
 
 fn row_to_task(row: SqliteRow) -> Task {
