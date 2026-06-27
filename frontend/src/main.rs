@@ -295,13 +295,8 @@ fn app() -> Html {
                 <p>{ "Full-stack Rust task management app using Axum backend and Yew frontend." }</p>
 
                 <div class="button-row">
-                    <button onclick={check_api}>
-                        { "Check Backend API" }
-                    </button>
-
-                    <button onclick={load_tasks}>
-                        { "Load Tasks" }
-                    </button>
+                    <button onclick={check_api}>{ "Check Backend API" }</button>
+                    <button onclick={load_tasks}>{ "Load Tasks" }</button>
                 </div>
 
                 <p>
@@ -410,12 +405,6 @@ fn app() -> Html {
                         }
                     }
                 }
-            </section>
-
-            <section class="card">
-                <h2>{ "API Configuration" }</h2>
-                <p>{ format!("Backend URL: {API_BASE_URL}") }</p>
-                <p>{ format!("API key used for task requests: {API_KEY}") }</p>
             </section>
         </div>
     }

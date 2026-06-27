@@ -1,0 +1,12 @@
+/Users/deranindugunasekara/rust-taskflow-api/frontend/target/wasm32-unknown-unknown/debug/deps/thiserror-74989a840cec76e8.d: /Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs /Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs /Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs /Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs /Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs /Users/deranindugunasekara/rust-taskflow-api/frontend/target/wasm32-unknown-unknown/debug/build/thiserror-eaa7f2a5a0da3812/out/private.rs
+
+/Users/deranindugunasekara/rust-taskflow-api/frontend/target/wasm32-unknown-unknown/debug/deps/libthiserror-74989a840cec76e8.rmeta: /Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs /Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs /Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs /Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs /Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs /Users/deranindugunasekara/rust-taskflow-api/frontend/target/wasm32-unknown-unknown/debug/build/thiserror-eaa7f2a5a0da3812/out/private.rs
+
+/Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/lib.rs:
+/Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/aserror.rs:
+/Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/display.rs:
+/Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/var.rs:
+/Users/deranindugunasekara/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/thiserror-2.0.18/src/private.rs:
+/Users/deranindugunasekara/rust-taskflow-api/frontend/target/wasm32-unknown-unknown/debug/build/thiserror-eaa7f2a5a0da3812/out/private.rs:
+
+# env-dep:OUT_DIR=/Users/deranindugunasekara/rust-taskflow-api/frontend/target/wasm32-unknown-unknown/debug/build/thiserror-eaa7f2a5a0da3812/out
