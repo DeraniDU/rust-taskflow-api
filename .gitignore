@@ -1,3 +1,16 @@
 /target
 
 taskflow.db
+
+# Frontend build artifacts
+/frontend/target/
+/frontend/dist/
+
+# Rust build artifacts
+/target/
+
+# Local files
+.env
+*.db
+*.db-shm
+*.db-wal
