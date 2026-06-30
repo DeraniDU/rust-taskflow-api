@@ -3,3 +3,7 @@
 /frontend/dist
 
 taskflow.db
+
+# Frontend build output
+frontend/dist/
+frontend/target/
