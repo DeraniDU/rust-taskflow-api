@@ -42,12 +42,14 @@ body {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.task-form {
+.task-form,
+.filter-form {
   display: grid;
   gap: 14px;
 }
 
-.task-form label {
+.task-form label,
+.filter-form label {
   display: grid;
   gap: 6px;
   font-weight: bold;
@@ -55,7 +57,9 @@ body {
 
 .task-form input,
 .task-form textarea,
-.task-form select {
+.task-form select,
+.filter-form input,
+.filter-form select {
   width: 100%;
   padding: 11px;
   border: 1px solid #d1d5db;
@@ -68,10 +72,17 @@ body {
   resize: vertical;
 }
 
-.form-row {
+.form-row,
+.filter-form {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 14px;
+}
+
+.filter-preview {
+  color: #6b7280;
+  font-size: 14px;
+  word-break: break-all;
 }
 
 .task-list {
@@ -110,6 +121,13 @@ body {
   gap: 4px;
   margin-top: 12px;
   color: #6b7280;
+}
+
+.task-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
 }
 
 .badge {
@@ -169,8 +187,38 @@ button:hover {
   background: #374151;
 }
 
+button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.secondary-button {
+  background: #6b7280;
+}
+
+.secondary-button:hover {
+  background: #4b5563;
+}
+
+.complete-button {
+  background: #047857;
+}
+
+.complete-button:hover {
+  background: #065f46;
+}
+
+.delete-button {
+  background: #b91c1c;
+}
+
+.delete-button:hover {
+  background: #991b1b;
+}
+
 @media (max-width: 700px) {
-  .form-row {
+  .form-row,
+  .filter-form {
     grid-template-columns: 1fr;
   }
 

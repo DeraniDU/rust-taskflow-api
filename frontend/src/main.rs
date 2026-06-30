@@ -1,7 +1,7 @@
 use gloo_net::http::Request;
 use serde::{Deserialize, Serialize};
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{HtmlInputElement, HtmlSelectElement, HtmlTextAreaElement, SubmitEvent};
+use web_sys::{HtmlInputElement, HtmlSelectElement, HtmlTextAreaElement};
 use yew::prelude::*;
 
 const API_BASE_URL: &str = "http://127.0.0.1:3000";
@@ -27,6 +27,14 @@ enum TaskLoadStatus {
 enum CreateTaskStatus {
     Idle,
     Creating,
+    Success(String),
+    Error(String),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum TaskActionStatus {
+    Idle,
+    Processing,
     Success(String),
     Error(String),
 }
@@ -58,6 +66,13 @@ struct Task {
     updated_at: String,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+struct TaskFilters {
+    status: String,
+    priority: String,
+    due_date: String,
+}
+
 #[derive(Clone, Debug, Serialize)]
 struct CreateTaskPayload {
     title: String,
@@ -66,8 +81,49 @@ struct CreateTaskPayload {
     due_date: Option<String>,
 }
 
-async fn fetch_tasks_from_api() -> Result<Vec<Task>, String> {
-    let response = Request::get(&format!("{API_BASE_URL}/tasks"))
+#[derive(Clone, Debug, Serialize)]
+struct UpdateTaskPayload {
+    title: String,
+    description: String,
+    status: String,
+    priority: String,
+    due_date: Option<String>,
+}
+
+fn default_filters() -> TaskFilters {
+    TaskFilters {
+        status: "all".to_string(),
+        priority: "all".to_string(),
+        due_date: String::new(),
+    }
+}
+
+fn build_tasks_url(filters: &TaskFilters) -> String {
+    let mut query_params = Vec::new();
+
+    if filters.status != "all" {
+        query_params.push(format!("status={}", filters.status));
+    }
+
+    if filters.priority != "all" {
+        query_params.push(format!("priority={}", filters.priority));
+    }
+
+    if !filters.due_date.trim().is_empty() {
+        query_params.push(format!("due_date={}", filters.due_date.trim()));
+    }
+
+    if query_params.is_empty() {
+        format!("{API_BASE_URL}/tasks")
+    } else {
+        format!("{API_BASE_URL}/tasks?{}", query_params.join("&"))
+    }
+}
+
+async fn fetch_tasks_from_api(filters: TaskFilters) -> Result<Vec<Task>, String> {
+    let url = build_tasks_url(&filters);
+
+    let response = Request::get(&url)
         .header("x-api-key", API_KEY)
         .send()
         .await
@@ -105,12 +161,71 @@ async fn create_task_in_api(payload: CreateTaskPayload) -> Result<Task, String> 
         .map_err(|error| format!("Could not read created task JSON: {error}"))
 }
 
+async fn update_task_in_api(task_id: u32, payload: UpdateTaskPayload) -> Result<Task, String> {
+    let request = Request::put(&format!("{API_BASE_URL}/tasks/{task_id}"))
+        .header("Content-Type", "application/json")
+        .header("x-api-key", API_KEY)
+        .json(&payload)
+        .map_err(|error| format!("Could not prepare update request body: {error}"))?;
+
+    let response = request
+        .send()
+        .await
+        .map_err(|error| format!("Could not connect to backend: {error}"))?;
+
+    if !response.ok() {
+        return Err(format!("API returned status {}", response.status()));
+    }
+
+    response
+        .json::<Task>()
+        .await
+        .map_err(|error| format!("Could not read updated task JSON: {error}"))
+}
+
+async fn delete_task_in_api(task_id: u32) -> Result<(), String> {
+    let response = Request::delete(&format!("{API_BASE_URL}/tasks/{task_id}"))
+        .header("x-api-key", API_KEY)
+        .send()
+        .await
+        .map_err(|error| format!("Could not connect to backend: {error}"))?;
+
+    if !response.ok() {
+        return Err(format!("API returned status {}", response.status()));
+    }
+
+    Ok(())
+}
+
+fn load_tasks_with_filters(
+    filters: TaskFilters,
+    tasks: UseStateHandle<Vec<Task>>,
+    task_load_status: UseStateHandle<TaskLoadStatus>,
+) {
+    spawn_local(async move {
+        task_load_status.set(TaskLoadStatus::Loading);
+
+        match fetch_tasks_from_api(filters).await {
+            Ok(task_list) => {
+                tasks.set(task_list);
+                task_load_status.set(TaskLoadStatus::Loaded);
+            }
+            Err(message) => {
+                task_load_status.set(TaskLoadStatus::Error(message));
+            }
+        }
+    });
+}
+
 #[function_component(App)]
 fn app() -> Html {
     let api_status = use_state(|| ApiStatus::NotChecked);
     let task_load_status = use_state(|| TaskLoadStatus::NotLoaded);
     let create_task_status = use_state(|| CreateTaskStatus::Idle);
+    let task_action_status = use_state(|| TaskActionStatus::Idle);
     let tasks = use_state(Vec::<Task>::new);
+
+    let filters = use_state(default_filters);
 
     let new_title = use_state(String::new);
     let new_description = use_state(String::new);
@@ -151,24 +266,65 @@ fn app() -> Html {
     let load_tasks = {
         let tasks = tasks.clone();
         let task_load_status = task_load_status.clone();
+        let filters = filters.clone();
 
         Callback::from(move |_| {
-            let tasks = tasks.clone();
-            let task_load_status = task_load_status.clone();
+            load_tasks_with_filters((*filters).clone(), tasks.clone(), task_load_status.clone());
+        })
+    };
 
-            spawn_local(async move {
-                task_load_status.set(TaskLoadStatus::Loading);
+    let on_status_filter_change = {
+        let filters = filters.clone();
 
-                match fetch_tasks_from_api().await {
-                    Ok(task_list) => {
-                        tasks.set(task_list);
-                        task_load_status.set(TaskLoadStatus::Loaded);
-                    }
-                    Err(message) => {
-                        task_load_status.set(TaskLoadStatus::Error(message));
-                    }
-                }
-            });
+        Callback::from(move |event: Event| {
+            let select: HtmlSelectElement = event.target_unchecked_into();
+            let mut updated_filters = (*filters).clone();
+            updated_filters.status = select.value();
+            filters.set(updated_filters);
+        })
+    };
+
+    let on_priority_filter_change = {
+        let filters = filters.clone();
+
+        Callback::from(move |event: Event| {
+            let select: HtmlSelectElement = event.target_unchecked_into();
+            let mut updated_filters = (*filters).clone();
+            updated_filters.priority = select.value();
+            filters.set(updated_filters);
+        })
+    };
+
+    let on_due_date_filter_input = {
+        let filters = filters.clone();
+
+        Callback::from(move |event: InputEvent| {
+            let input: HtmlInputElement = event.target_unchecked_into();
+            let mut updated_filters = (*filters).clone();
+            updated_filters.due_date = input.value();
+            filters.set(updated_filters);
+        })
+    };
+
+    let apply_filters = {
+        let tasks = tasks.clone();
+        let task_load_status = task_load_status.clone();
+        let filters = filters.clone();
+
+        Callback::from(move |_| {
+            load_tasks_with_filters((*filters).clone(), tasks.clone(), task_load_status.clone());
+        })
+    };
+
+    let clear_filters = {
+        let tasks = tasks.clone();
+        let task_load_status = task_load_status.clone();
+        let filters = filters.clone();
+
+        Callback::from(move |_| {
+            let clean_filters = default_filters();
+            filters.set(clean_filters.clone());
+            load_tasks_with_filters(clean_filters, tasks.clone(), task_load_status.clone());
         })
     };
 
@@ -212,6 +368,7 @@ fn app() -> Html {
         let tasks = tasks.clone();
         let task_load_status = task_load_status.clone();
         let create_task_status = create_task_status.clone();
+        let filters = filters.clone();
 
         let new_title = new_title.clone();
         let new_description = new_description.clone();
@@ -247,6 +404,7 @@ fn app() -> Html {
             let tasks = tasks.clone();
             let task_load_status = task_load_status.clone();
             let create_task_status = create_task_status.clone();
+            let filters = filters.clone();
 
             let new_title = new_title.clone();
             let new_description = new_description.clone();
@@ -268,20 +426,93 @@ fn app() -> Html {
                         new_priority.set("medium".to_string());
                         new_due_date.set(String::new());
 
-                        task_load_status.set(TaskLoadStatus::Loading);
-
-                        match fetch_tasks_from_api().await {
-                            Ok(task_list) => {
-                                tasks.set(task_list);
-                                task_load_status.set(TaskLoadStatus::Loaded);
-                            }
-                            Err(message) => {
-                                task_load_status.set(TaskLoadStatus::Error(message));
-                            }
-                        }
+                        load_tasks_with_filters(
+                            (*filters).clone(),
+                            tasks.clone(),
+                            task_load_status.clone(),
+                        );
                     }
                     Err(message) => {
                         create_task_status.set(CreateTaskStatus::Error(message));
+                    }
+                }
+            });
+        })
+    };
+
+    let on_mark_completed = {
+        let tasks = tasks.clone();
+        let task_load_status = task_load_status.clone();
+        let task_action_status = task_action_status.clone();
+        let filters = filters.clone();
+
+        Callback::from(move |task: Task| {
+            let tasks = tasks.clone();
+            let task_load_status = task_load_status.clone();
+            let task_action_status = task_action_status.clone();
+            let filters = filters.clone();
+
+            spawn_local(async move {
+                task_action_status.set(TaskActionStatus::Processing);
+
+                let payload = UpdateTaskPayload {
+                    title: task.title.clone(),
+                    description: task.description.clone(),
+                    status: "completed".to_string(),
+                    priority: priority_api_value(&task.priority).to_string(),
+                    due_date: task.due_date.clone(),
+                };
+
+                match update_task_in_api(task.id, payload).await {
+                    Ok(updated_task) => {
+                        task_action_status.set(TaskActionStatus::Success(format!(
+                            "Task #{} marked as completed.",
+                            updated_task.id
+                        )));
+
+                        load_tasks_with_filters(
+                            (*filters).clone(),
+                            tasks.clone(),
+                            task_load_status.clone(),
+                        );
+                    }
+                    Err(message) => {
+                        task_action_status.set(TaskActionStatus::Error(message));
+                    }
+                }
+            });
+        })
+    };
+
+    let on_delete_task = {
+        let tasks = tasks.clone();
+        let task_load_status = task_load_status.clone();
+        let task_action_status = task_action_status.clone();
+        let filters = filters.clone();
+
+        Callback::from(move |task_id: u32| {
+            let tasks = tasks.clone();
+            let task_load_status = task_load_status.clone();
+            let task_action_status = task_action_status.clone();
+            let filters = filters.clone();
+
+            spawn_local(async move {
+                task_action_status.set(TaskActionStatus::Processing);
+
+                match delete_task_in_api(task_id).await {
+                    Ok(()) => {
+                        task_action_status.set(TaskActionStatus::Success(format!(
+                            "Task #{task_id} deleted successfully."
+                        )));
+
+                        load_tasks_with_filters(
+                            (*filters).clone(),
+                            tasks.clone(),
+                            task_load_status.clone(),
+                        );
+                    }
+                    Err(message) => {
+                        task_action_status.set(TaskActionStatus::Error(message));
                     }
                 }
             });
@@ -377,6 +608,64 @@ fn app() -> Html {
             </section>
 
             <section class="card">
+                <h2>{ "Task Filters" }</h2>
+
+                <div class="filter-form">
+                    <label>
+                        { "Status" }
+                        <select value={filters.status.clone()} onchange={on_status_filter_change}>
+                            <option value="all">{ "All" }</option>
+                            <option value="pending">{ "Pending" }</option>
+                            <option value="completed">{ "Completed" }</option>
+                        </select>
+                    </label>
+
+                    <label>
+                        { "Priority" }
+                        <select value={filters.priority.clone()} onchange={on_priority_filter_change}>
+                            <option value="all">{ "All" }</option>
+                            <option value="low">{ "Low" }</option>
+                            <option value="medium">{ "Medium" }</option>
+                            <option value="high">{ "High" }</option>
+                        </select>
+                    </label>
+
+                    <label>
+                        { "Due Date" }
+                        <input
+                            type="date"
+                            value={filters.due_date.clone()}
+                            oninput={on_due_date_filter_input}
+                        />
+                    </label>
+                </div>
+
+                <div class="button-row">
+                    <button onclick={apply_filters}>{ "Apply Filters" }</button>
+                    <button class="secondary-button" onclick={clear_filters}>{ "Clear Filters" }</button>
+                </div>
+
+                <p class="filter-preview">
+                    { format!("Current API query: {}", build_tasks_url(&filters)) }
+                </p>
+            </section>
+
+            <section class="card">
+                <h2>{ "Task Actions" }</h2>
+
+                <p>
+                    {
+                        match &*task_action_status {
+                            TaskActionStatus::Idle => html! { <span>{ "No task action yet." }</span> },
+                            TaskActionStatus::Processing => html! { <span>{ "Processing task action..." }</span> },
+                            TaskActionStatus::Success(message) => html! { <span class="success">{ message }</span> },
+                            TaskActionStatus::Error(message) => html! { <span class="error">{ message }</span> },
+                        }
+                    }
+                </p>
+            </section>
+
+            <section class="card">
                 <h2>{ "Tasks" }</h2>
 
                 {
@@ -392,12 +681,16 @@ fn app() -> Html {
                         },
                         TaskLoadStatus::Loaded => {
                             if tasks.is_empty() {
-                                html! { <p>{ "No tasks found." }</p> }
+                                html! { <p>{ "No tasks found for selected filters." }</p> }
                             } else {
                                 html! {
                                     <div class="task-list">
                                         { for tasks.iter().map(|task| html! {
-                                            <TaskCard task={task.clone()} />
+                                            <TaskCard
+                                                task={task.clone()}
+                                                on_mark_completed={on_mark_completed.clone()}
+                                                on_delete_task={on_delete_task.clone()}
+                                            />
                                         }) }
                                     </div>
                                 }
@@ -413,11 +706,31 @@ fn app() -> Html {
 #[derive(Properties, PartialEq)]
 struct TaskCardProps {
     task: Task,
+    on_mark_completed: Callback<Task>,
+    on_delete_task: Callback<u32>,
 }
 
 #[function_component(TaskCard)]
 fn task_card(props: &TaskCardProps) -> Html {
     let task = &props.task;
+
+    let mark_completed = {
+        let task = task.clone();
+        let on_mark_completed = props.on_mark_completed.clone();
+
+        Callback::from(move |_| {
+            on_mark_completed.emit(task.clone());
+        })
+    };
+
+    let delete_task = {
+        let task_id = task.id;
+        let on_delete_task = props.on_delete_task.clone();
+
+        Callback::from(move |_| {
+            on_delete_task.emit(task_id);
+        })
+    };
 
     html! {
         <article class="task-card">
@@ -448,6 +761,28 @@ fn task_card(props: &TaskCardProps) -> Html {
             <div class="task-dates">
                 <small>{ format!("Created: {}", task.created_at) }</small>
                 <small>{ format!("Updated: {}", task.updated_at) }</small>
+            </div>
+
+            <div class="task-actions">
+                {
+                    if task.status == TaskStatus::Pending {
+                        html! {
+                            <button class="complete-button" onclick={mark_completed}>
+                                { "Mark Completed" }
+                            </button>
+                        }
+                    } else {
+                        html! {
+                            <button class="complete-button" disabled=true>
+                                { "Completed" }
+                            </button>
+                        }
+                    }
+                }
+
+                <button class="delete-button" onclick={delete_task}>
+                    { "Delete" }
+                </button>
             </div>
         </article>
     }
@@ -480,6 +815,14 @@ fn priority_class(priority: &TaskPriority) -> &'static str {
         TaskPriority::Low => "badge priority-low",
         TaskPriority::Medium => "badge priority-medium",
         TaskPriority::High => "badge priority-high",
+    }
+}
+
+fn priority_api_value(priority: &TaskPriority) -> &'static str {
+    match priority {
+        TaskPriority::Low => "low",
+        TaskPriority::Medium => "medium",
+        TaskPriority::High => "high",
     }
 }
 
