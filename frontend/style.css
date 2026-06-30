@@ -112,13 +112,6 @@ body {
   color: #6b7280;
 }
 
-.task-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 14px;
-  flex-wrap: wrap;
-}
-
 .badge {
   display: inline-block;
   padding: 5px 10px;
@@ -174,27 +167,6 @@ button {
 
 button:hover {
   background: #374151;
-}
-
-button:disabled {
-  background: #9ca3af;
-  cursor: not-allowed;
-}
-
-.complete-button {
-  background: #047857;
-}
-
-.complete-button:hover {
-  background: #065f46;
-}
-
-.delete-button {
-  background: #b91c1c;
-}
-
-.delete-button:hover {
-  background: #991b1b;
 }
 
 @media (max-width: 700px) {

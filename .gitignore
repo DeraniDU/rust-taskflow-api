@@ -4,6 +4,16 @@
 
 taskflow.db
 
+<<<<<<< HEAD
+# Frontend build artifacts
+/frontend/target/
+/frontend/dist/
+
+# Rust build artifacts
+/target/
+
+# Local files
+=======
 # Rust build output
 /target/
 /frontend/target/
@@ -12,6 +22,7 @@ taskflow.db
 /frontend/dist/
 
 # Local environment and database files
+>>>>>>> origin/main
 .env
 *.db
 *.db-shm

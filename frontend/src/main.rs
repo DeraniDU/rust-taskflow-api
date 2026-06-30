@@ -31,14 +31,6 @@ enum CreateTaskStatus {
     Error(String),
 }
 
-#[derive(Clone, Debug, PartialEq)]
-enum TaskActionStatus {
-    Idle,
-    Processing,
-    Success(String),
-    Error(String),
-}
-
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum TaskStatus {
@@ -70,15 +62,6 @@ struct Task {
 struct CreateTaskPayload {
     title: String,
     description: String,
-    priority: String,
-    due_date: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct UpdateTaskPayload {
-    title: String,
-    description: String,
-    status: String,
     priority: String,
     due_date: Option<String>,
 }
@@ -122,48 +105,11 @@ async fn create_task_in_api(payload: CreateTaskPayload) -> Result<Task, String> 
         .map_err(|error| format!("Could not read created task JSON: {error}"))
 }
 
-async fn update_task_in_api(task_id: u32, payload: UpdateTaskPayload) -> Result<Task, String> {
-    let request = Request::put(&format!("{API_BASE_URL}/tasks/{task_id}"))
-        .header("Content-Type", "application/json")
-        .header("x-api-key", API_KEY)
-        .json(&payload)
-        .map_err(|error| format!("Could not prepare update request body: {error}"))?;
-
-    let response = request
-        .send()
-        .await
-        .map_err(|error| format!("Could not connect to backend: {error}"))?;
-
-    if !response.ok() {
-        return Err(format!("API returned status {}", response.status()));
-    }
-
-    response
-        .json::<Task>()
-        .await
-        .map_err(|error| format!("Could not read updated task JSON: {error}"))
-}
-
-async fn delete_task_in_api(task_id: u32) -> Result<(), String> {
-    let response = Request::delete(&format!("{API_BASE_URL}/tasks/{task_id}"))
-        .header("x-api-key", API_KEY)
-        .send()
-        .await
-        .map_err(|error| format!("Could not connect to backend: {error}"))?;
-
-    if !response.ok() {
-        return Err(format!("API returned status {}", response.status()));
-    }
-
-    Ok(())
-}
-
 #[function_component(App)]
 fn app() -> Html {
     let api_status = use_state(|| ApiStatus::NotChecked);
     let task_load_status = use_state(|| TaskLoadStatus::NotLoaded);
     let create_task_status = use_state(|| CreateTaskStatus::Idle);
-    let task_action_status = use_state(|| TaskActionStatus::Idle);
     let tasks = use_state(Vec::<Task>::new);
 
     let new_title = use_state(String::new);
@@ -342,93 +288,6 @@ fn app() -> Html {
         })
     };
 
-    let on_mark_completed = {
-        let tasks = tasks.clone();
-        let task_load_status = task_load_status.clone();
-        let task_action_status = task_action_status.clone();
-
-        Callback::from(move |task: Task| {
-            let tasks = tasks.clone();
-            let task_load_status = task_load_status.clone();
-            let task_action_status = task_action_status.clone();
-
-            spawn_local(async move {
-                task_action_status.set(TaskActionStatus::Processing);
-
-                let payload = UpdateTaskPayload {
-                    title: task.title.clone(),
-                    description: task.description.clone(),
-                    status: "completed".to_string(),
-                    priority: priority_api_value(&task.priority).to_string(),
-                    due_date: task.due_date.clone(),
-                };
-
-                match update_task_in_api(task.id, payload).await {
-                    Ok(updated_task) => {
-                        task_action_status.set(TaskActionStatus::Success(format!(
-                            "Task #{} marked as completed.",
-                            updated_task.id
-                        )));
-
-                        task_load_status.set(TaskLoadStatus::Loading);
-
-                        match fetch_tasks_from_api().await {
-                            Ok(task_list) => {
-                                tasks.set(task_list);
-                                task_load_status.set(TaskLoadStatus::Loaded);
-                            }
-                            Err(message) => {
-                                task_load_status.set(TaskLoadStatus::Error(message));
-                            }
-                        }
-                    }
-                    Err(message) => {
-                        task_action_status.set(TaskActionStatus::Error(message));
-                    }
-                }
-            });
-        })
-    };
-
-    let on_delete_task = {
-        let tasks = tasks.clone();
-        let task_load_status = task_load_status.clone();
-        let task_action_status = task_action_status.clone();
-
-        Callback::from(move |task_id: u32| {
-            let tasks = tasks.clone();
-            let task_load_status = task_load_status.clone();
-            let task_action_status = task_action_status.clone();
-
-            spawn_local(async move {
-                task_action_status.set(TaskActionStatus::Processing);
-
-                match delete_task_in_api(task_id).await {
-                    Ok(()) => {
-                        task_action_status.set(TaskActionStatus::Success(format!(
-                            "Task #{task_id} deleted successfully."
-                        )));
-
-                        task_load_status.set(TaskLoadStatus::Loading);
-
-                        match fetch_tasks_from_api().await {
-                            Ok(task_list) => {
-                                tasks.set(task_list);
-                                task_load_status.set(TaskLoadStatus::Loaded);
-                            }
-                            Err(message) => {
-                                task_load_status.set(TaskLoadStatus::Error(message));
-                            }
-                        }
-                    }
-                    Err(message) => {
-                        task_action_status.set(TaskActionStatus::Error(message));
-                    }
-                }
-            });
-        })
-    };
-
     html! {
         <div class="container">
             <section class="header">
@@ -518,21 +377,6 @@ fn app() -> Html {
             </section>
 
             <section class="card">
-                <h2>{ "Task Actions" }</h2>
-
-                <p>
-                    {
-                        match &*task_action_status {
-                            TaskActionStatus::Idle => html! { <span>{ "No task action yet." }</span> },
-                            TaskActionStatus::Processing => html! { <span>{ "Processing task action..." }</span> },
-                            TaskActionStatus::Success(message) => html! { <span class="success">{ message }</span> },
-                            TaskActionStatus::Error(message) => html! { <span class="error">{ message }</span> },
-                        }
-                    }
-                </p>
-            </section>
-
-            <section class="card">
                 <h2>{ "Tasks" }</h2>
 
                 {
@@ -553,11 +397,7 @@ fn app() -> Html {
                                 html! {
                                     <div class="task-list">
                                         { for tasks.iter().map(|task| html! {
-                                            <TaskCard
-                                                task={task.clone()}
-                                                on_mark_completed={on_mark_completed.clone()}
-                                                on_delete_task={on_delete_task.clone()}
-                                            />
+                                            <TaskCard task={task.clone()} />
                                         }) }
                                     </div>
                                 }
@@ -573,31 +413,11 @@ fn app() -> Html {
 #[derive(Properties, PartialEq)]
 struct TaskCardProps {
     task: Task,
-    on_mark_completed: Callback<Task>,
-    on_delete_task: Callback<u32>,
 }
 
 #[function_component(TaskCard)]
 fn task_card(props: &TaskCardProps) -> Html {
     let task = &props.task;
-
-    let mark_completed = {
-        let task = task.clone();
-        let on_mark_completed = props.on_mark_completed.clone();
-
-        Callback::from(move |_| {
-            on_mark_completed.emit(task.clone());
-        })
-    };
-
-    let delete_task = {
-        let task_id = task.id;
-        let on_delete_task = props.on_delete_task.clone();
-
-        Callback::from(move |_| {
-            on_delete_task.emit(task_id);
-        })
-    };
 
     html! {
         <article class="task-card">
@@ -628,28 +448,6 @@ fn task_card(props: &TaskCardProps) -> Html {
             <div class="task-dates">
                 <small>{ format!("Created: {}", task.created_at) }</small>
                 <small>{ format!("Updated: {}", task.updated_at) }</small>
-            </div>
-
-            <div class="task-actions">
-                {
-                    if task.status == TaskStatus::Pending {
-                        html! {
-                            <button class="complete-button" onclick={mark_completed}>
-                                { "Mark Completed" }
-                            </button>
-                        }
-                    } else {
-                        html! {
-                            <button class="complete-button" disabled=true>
-                                { "Completed" }
-                            </button>
-                        }
-                    }
-                }
-
-                <button class="delete-button" onclick={delete_task}>
-                    { "Delete" }
-                </button>
             </div>
         </article>
     }
@@ -682,14 +480,6 @@ fn priority_class(priority: &TaskPriority) -> &'static str {
         TaskPriority::Low => "badge priority-low",
         TaskPriority::Medium => "badge priority-medium",
         TaskPriority::High => "badge priority-high",
-    }
-}
-
-fn priority_api_value(priority: &TaskPriority) -> &'static str {
-    match priority {
-        TaskPriority::Low => "low",
-        TaskPriority::Medium => "medium",
-        TaskPriority::High => "high",
     }
 }
 
