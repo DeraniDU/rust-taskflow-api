@@ -659,6 +659,11 @@ fn app() -> Html {
             </section>
 
             <section class="card">
+                <h2>{ "Task Summary" }</h2>
+                <TaskSummary tasks={(*tasks).clone()} />
+            </section>
+
+            <section class="card">
                 <h2>{ "Task Actions" }</h2>
 
                 <p>
@@ -708,6 +713,58 @@ fn app() -> Html {
                     }
                 }
             </section>
+        </div>
+    }
+}
+
+#[derive(Properties, PartialEq)]
+struct TaskSummaryProps {
+    tasks: Vec<Task>,
+}
+
+#[function_component(TaskSummary)]
+fn task_summary(props: &TaskSummaryProps) -> Html {
+    let total_tasks = props.tasks.len();
+
+    let pending_tasks = props
+        .tasks
+        .iter()
+        .filter(|task| task.status == TaskStatus::Pending)
+        .count();
+
+    let completed_tasks = props
+        .tasks
+        .iter()
+        .filter(|task| task.status == TaskStatus::Completed)
+        .count();
+
+    let high_priority_tasks = props
+        .tasks
+        .iter()
+        .filter(|task| task.priority == TaskPriority::High)
+        .count();
+
+    html! {
+        <div class="summary-grid">
+            <div class="summary-card">
+                <span class="summary-number">{ total_tasks }</span>
+                <span class="summary-label">{ "Total Tasks" }</span>
+            </div>
+
+            <div class="summary-card">
+                <span class="summary-number">{ pending_tasks }</span>
+                <span class="summary-label">{ "Pending" }</span>
+            </div>
+
+            <div class="summary-card">
+                <span class="summary-number">{ completed_tasks }</span>
+                <span class="summary-label">{ "Completed" }</span>
+            </div>
+
+            <div class="summary-card">
+                <span class="summary-number">{ high_priority_tasks }</span>
+                <span class="summary-label">{ "High Priority" }</span>
+            </div>
         </div>
     }
 }

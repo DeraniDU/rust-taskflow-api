@@ -247,3 +247,37 @@ button:disabled {
 .save-button:hover {
   background: #065f46;
 }
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.summary-card {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 18px;
+  text-align: center;
+}
+
+.summary-number {
+  display: block;
+  font-size: 28px;
+  font-weight: bold;
+  color: #111827;
+}
+
+.summary-label {
+  display: block;
+  margin-top: 6px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+@media (max-width: 700px) {
+  .summary-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
