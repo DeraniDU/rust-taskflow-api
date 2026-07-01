@@ -227,3 +227,23 @@ button:disabled {
     flex-direction: column;
   }
 }
+
+.editing-card {
+  border: 2px solid #111827;
+}
+
+.edit-button {
+  background: #2563eb;
+}
+
+.edit-button:hover {
+  background: #1d4ed8;
+}
+
+.save-button {
+  background: #047857;
+}
+
+.save-button:hover {
+  background: #065f46;
+}
