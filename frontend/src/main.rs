@@ -81,7 +81,7 @@ struct CreateTaskPayload {
     due_date: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 struct UpdateTaskPayload {
     title: String,
     description: String,
@@ -440,13 +440,13 @@ fn app() -> Html {
         })
     };
 
-    let on_mark_completed = {
+    let on_update_task = {
         let tasks = tasks.clone();
         let task_load_status = task_load_status.clone();
         let task_action_status = task_action_status.clone();
         let filters = filters.clone();
 
-        Callback::from(move |task: Task| {
+        Callback::from(move |(task_id, payload): (u32, UpdateTaskPayload)| {
             let tasks = tasks.clone();
             let task_load_status = task_load_status.clone();
             let task_action_status = task_action_status.clone();
@@ -455,18 +455,10 @@ fn app() -> Html {
             spawn_local(async move {
                 task_action_status.set(TaskActionStatus::Processing);
 
-                let payload = UpdateTaskPayload {
-                    title: task.title.clone(),
-                    description: task.description.clone(),
-                    status: "completed".to_string(),
-                    priority: priority_api_value(&task.priority).to_string(),
-                    due_date: task.due_date.clone(),
-                };
-
-                match update_task_in_api(task.id, payload).await {
+                match update_task_in_api(task_id, payload).await {
                     Ok(updated_task) => {
                         task_action_status.set(TaskActionStatus::Success(format!(
-                            "Task #{} marked as completed.",
+                            "Task #{} updated successfully.",
                             updated_task.id
                         )));
 
@@ -481,6 +473,22 @@ fn app() -> Html {
                     }
                 }
             });
+        })
+    };
+
+    let on_mark_completed = {
+        let on_update_task = on_update_task.clone();
+
+        Callback::from(move |task: Task| {
+            let payload = UpdateTaskPayload {
+                title: task.title.clone(),
+                description: task.description.clone(),
+                status: "completed".to_string(),
+                priority: priority_api_value(&task.priority).to_string(),
+                due_date: task.due_date.clone(),
+            };
+
+            on_update_task.emit((task.id, payload));
         })
     };
 
@@ -689,6 +697,7 @@ fn app() -> Html {
                                             <TaskCard
                                                 task={task.clone()}
                                                 on_mark_completed={on_mark_completed.clone()}
+                                                on_update_task={on_update_task.clone()}
                                                 on_delete_task={on_delete_task.clone()}
                                             />
                                         }) }
@@ -707,12 +716,130 @@ fn app() -> Html {
 struct TaskCardProps {
     task: Task,
     on_mark_completed: Callback<Task>,
+    on_update_task: Callback<(u32, UpdateTaskPayload)>,
     on_delete_task: Callback<u32>,
 }
 
 #[function_component(TaskCard)]
 fn task_card(props: &TaskCardProps) -> Html {
     let task = &props.task;
+
+    let is_editing = use_state(|| false);
+    let edit_title = use_state(|| task.title.clone());
+    let edit_description = use_state(|| task.description.clone());
+    let edit_status = use_state(|| status_api_value(&task.status).to_string());
+    let edit_priority = use_state(|| priority_api_value(&task.priority).to_string());
+    let edit_due_date = use_state(|| task.due_date.clone().unwrap_or_default());
+
+    let start_edit = {
+        let is_editing = is_editing.clone();
+        let edit_title = edit_title.clone();
+        let edit_description = edit_description.clone();
+        let edit_status = edit_status.clone();
+        let edit_priority = edit_priority.clone();
+        let edit_due_date = edit_due_date.clone();
+        let task = task.clone();
+
+        Callback::from(move |_| {
+            edit_title.set(task.title.clone());
+            edit_description.set(task.description.clone());
+            edit_status.set(status_api_value(&task.status).to_string());
+            edit_priority.set(priority_api_value(&task.priority).to_string());
+            edit_due_date.set(task.due_date.clone().unwrap_or_default());
+            is_editing.set(true);
+        })
+    };
+
+    let cancel_edit = {
+        let is_editing = is_editing.clone();
+
+        Callback::from(move |_| {
+            is_editing.set(false);
+        })
+    };
+
+    let on_edit_title_input = {
+        let edit_title = edit_title.clone();
+
+        Callback::from(move |event: InputEvent| {
+            let input: HtmlInputElement = event.target_unchecked_into();
+            edit_title.set(input.value());
+        })
+    };
+
+    let on_edit_description_input = {
+        let edit_description = edit_description.clone();
+
+        Callback::from(move |event: InputEvent| {
+            let input: HtmlTextAreaElement = event.target_unchecked_into();
+            edit_description.set(input.value());
+        })
+    };
+
+    let on_edit_status_change = {
+        let edit_status = edit_status.clone();
+
+        Callback::from(move |event: Event| {
+            let select: HtmlSelectElement = event.target_unchecked_into();
+            edit_status.set(select.value());
+        })
+    };
+
+    let on_edit_priority_change = {
+        let edit_priority = edit_priority.clone();
+
+        Callback::from(move |event: Event| {
+            let select: HtmlSelectElement = event.target_unchecked_into();
+            edit_priority.set(select.value());
+        })
+    };
+
+    let on_edit_due_date_input = {
+        let edit_due_date = edit_due_date.clone();
+
+        Callback::from(move |event: InputEvent| {
+            let input: HtmlInputElement = event.target_unchecked_into();
+            edit_due_date.set(input.value());
+        })
+    };
+
+    let save_edit = {
+        let task_id = task.id;
+        let edit_title = edit_title.clone();
+        let edit_description = edit_description.clone();
+        let edit_status = edit_status.clone();
+        let edit_priority = edit_priority.clone();
+        let edit_due_date = edit_due_date.clone();
+        let is_editing = is_editing.clone();
+        let on_update_task = props.on_update_task.clone();
+
+        Callback::from(move |event: SubmitEvent| {
+            event.prevent_default();
+
+            let title = (*edit_title).trim().to_string();
+
+            if title.is_empty() {
+                return;
+            }
+
+            let due_date_text = (*edit_due_date).trim().to_string();
+
+            let payload = UpdateTaskPayload {
+                title,
+                description: (*edit_description).trim().to_string(),
+                status: (*edit_status).clone(),
+                priority: (*edit_priority).clone(),
+                due_date: if due_date_text.is_empty() {
+                    None
+                } else {
+                    Some(due_date_text)
+                },
+            };
+
+            on_update_task.emit((task_id, payload));
+            is_editing.set(false);
+        })
+    };
 
     let mark_completed = {
         let task = task.clone();
@@ -732,59 +859,123 @@ fn task_card(props: &TaskCardProps) -> Html {
         })
     };
 
-    html! {
-        <article class="task-card">
-            <div class="task-card-header">
-                <h3>{ format!("#{} - {}", task.id, task.title) }</h3>
-                <span class={status_class(&task.status)}>
-                    { status_text(&task.status) }
-                </span>
-            </div>
+    if *is_editing {
+        html! {
+            <article class="task-card editing-card">
+                <h3>{ format!("Edit Task #{}", task.id) }</h3>
 
-            <p>{ &task.description }</p>
+                <form class="task-form" onsubmit={save_edit}>
+                    <label>
+                        { "Title" }
+                        <input
+                            type="text"
+                            value={(*edit_title).clone()}
+                            oninput={on_edit_title_input}
+                        />
+                    </label>
 
-            <div class="task-meta">
-                <span class={priority_class(&task.priority)}>
-                    { format!("Priority: {}", priority_text(&task.priority)) }
-                </span>
+                    <label>
+                        { "Description" }
+                        <textarea
+                            value={(*edit_description).clone()}
+                            oninput={on_edit_description_input}
+                        />
+                    </label>
 
-                <span class="badge">
+                    <div class="form-row">
+                        <label>
+                            { "Status" }
+                            <select value={(*edit_status).clone()} onchange={on_edit_status_change}>
+                                <option value="pending">{ "Pending" }</option>
+                                <option value="completed">{ "Completed" }</option>
+                            </select>
+                        </label>
+
+                        <label>
+                            { "Priority" }
+                            <select value={(*edit_priority).clone()} onchange={on_edit_priority_change}>
+                                <option value="low">{ "Low" }</option>
+                                <option value="medium">{ "Medium" }</option>
+                                <option value="high">{ "High" }</option>
+                            </select>
+                        </label>
+
+                        <label>
+                            { "Due Date" }
+                            <input
+                                type="date"
+                                value={(*edit_due_date).clone()}
+                                oninput={on_edit_due_date_input}
+                            />
+                        </label>
+                    </div>
+
+                    <div class="task-actions">
+                        <button type="submit" class="save-button">{ "Save Changes" }</button>
+                        <button type="button" class="secondary-button" onclick={cancel_edit}>{ "Cancel" }</button>
+                    </div>
+                </form>
+            </article>
+        }
+    } else {
+        html! {
+            <article class="task-card">
+                <div class="task-card-header">
+                    <h3>{ format!("#{} - {}", task.id, task.title) }</h3>
+                    <span class={status_class(&task.status)}>
+                        { status_text(&task.status) }
+                    </span>
+                </div>
+
+                <p>{ &task.description }</p>
+
+                <div class="task-meta">
+                    <span class={priority_class(&task.priority)}>
+                        { format!("Priority: {}", priority_text(&task.priority)) }
+                    </span>
+
+                    <span class="badge">
+                        {
+                            match &task.due_date {
+                                Some(date) => format!("Due: {date}"),
+                                None => "No due date".to_string(),
+                            }
+                        }
+                    </span>
+                </div>
+
+                <div class="task-dates">
+                    <small>{ format!("Created: {}", task.created_at) }</small>
+                    <small>{ format!("Updated: {}", task.updated_at) }</small>
+                </div>
+
+                <div class="task-actions">
+                    <button class="edit-button" onclick={start_edit}>
+                        { "Edit" }
+                    </button>
+
                     {
-                        match &task.due_date {
-                            Some(date) => format!("Due: {date}"),
-                            None => "No due date".to_string(),
+                        if task.status == TaskStatus::Pending {
+                            html! {
+                                <button class="complete-button" onclick={mark_completed}>
+                                    { "Mark Completed" }
+                                </button>
+                            }
+                        } else {
+                            html! {
+                                <button class="complete-button" disabled=true>
+                                    { "Completed" }
+                                </button>
+                            }
                         }
                     }
-                </span>
-            </div>
 
-            <div class="task-dates">
-                <small>{ format!("Created: {}", task.created_at) }</small>
-                <small>{ format!("Updated: {}", task.updated_at) }</small>
-            </div>
-
-            <div class="task-actions">
-                {
-                    if task.status == TaskStatus::Pending {
-                        html! {
-                            <button class="complete-button" onclick={mark_completed}>
-                                { "Mark Completed" }
-                            </button>
-                        }
-                    } else {
-                        html! {
-                            <button class="complete-button" disabled=true>
-                                { "Completed" }
-                            </button>
-                        }
-                    }
-                }
-
-                <button class="delete-button" onclick={delete_task}>
-                    { "Delete" }
-                </button>
-            </div>
-        </article>
+                    <button class="delete-button" onclick={delete_task}>
+                        { "Delete" }
+                    </button>
+                </div>
+            </article>
+        }
     }
 }
 
@@ -815,6 +1006,13 @@ fn priority_class(priority: &TaskPriority) -> &'static str {
         TaskPriority::Low => "badge priority-low",
         TaskPriority::Medium => "badge priority-medium",
         TaskPriority::High => "badge priority-high",
+    }
+}
+
+fn status_api_value(status: &TaskStatus) -> &'static str {
+    match status {
+        TaskStatus::Pending => "pending",
+        TaskStatus::Completed => "completed",
     }
 }
 
