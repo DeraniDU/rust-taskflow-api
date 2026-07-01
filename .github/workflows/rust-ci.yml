@@ -1,33 +1,80 @@
-name: Rust CI Pipeline
+name: Rust TaskFlow CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  API_KEY: dev-secret-key
+  DATABASE_URL: sqlite://taskflow.db
 
 jobs:
-  build-test:
-    name: Build, Format, Lint and Test
+  backend:
+    name: Backend Checks
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
+      - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
-      - name: Check Rust formatting
+      - name: Check backend formatting
         run: cargo fmt --check
 
-      - name: Run Clippy linter
+      - name: Run backend clippy
         run: cargo clippy -- -D warnings
 
-      - name: Run tests
+      - name: Run backend tests
         run: cargo test
 
-      - name: Build project
+      - name: Build backend release
         run: cargo build --release
+
+  frontend:
+    name: Frontend Checks
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable with WASM target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: rustfmt
+
+      - name: Check frontend formatting
+        run: cargo fmt --check
+
+      - name: Check frontend WASM compile
+        run: cargo check --target wasm32-unknown-unknown
+
+      - name: Install Trunk
+        run: cargo install trunk --locked
+
+      - name: Build frontend with Trunk
+        run: trunk build
+
+  docker:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t rust-taskflow-api .
