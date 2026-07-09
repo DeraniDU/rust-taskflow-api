@@ -25,7 +25,6 @@ COPY --from=builder /app/target/release/rust-taskflow-api /usr/local/bin/rust-ta
 ENV HOST=0.0.0.0
 ENV PORT=3000
 ENV DATABASE_URL=sqlite://taskflow.db
-ENV API_KEY=dev-secret-key
 
 EXPOSE 3000
 
