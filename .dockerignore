@@ -1,0 +1,11 @@
+/target
+/frontend/target
+/frontend/dist
+taskflow.db
+.git
+.github
+.DS_Store
+.env
+*.db
+*.db-shm
+*.db-wal
